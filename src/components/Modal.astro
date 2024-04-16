@@ -1,0 +1,168 @@
+---
+interface Props {
+    triggerId: string
+    title: string
+    actions?: {
+        text: string
+        callback: () => void
+    }[]
+    closeText?: string
+    children: HTMLElement | HTMLElement[]
+    userStyles?: any
+}
+
+const {triggerId, title, actions, closeText = "Close"} = Astro.props
+
+const renderActions = async (idx: number) => await Astro.slots.render('action', [actions[idx] as Props['actions']])
+---
+
+<dialog class="modal" aria-labelledby={triggerId}>
+    <div class="modal__inner">
+        <div class="modal__close">
+            <button>{closeText}</button>
+        </div>
+        <div class="modal__content">
+            <h3 tabindex="-1">
+                {title}
+            </h3>
+            <slot name="content"></slot>
+        </div>
+        <div class="modal__actions">
+            actions
+            {actions.map((_, idx) => <Fragment set:html={renderActions(idx)}/>)}
+        </div>
+    </div>
+</dialog>
+
+<script>
+    type FocusableElement = | HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement
+
+    // variables
+    let modals = document.querySelectorAll<HTMLDialogElement>('.modal')
+
+    let trapFocusController: AbortController | undefined
+    let keydownController: AbortController | undefined
+
+    const getFocusableElements = (element: HTMLElement) => {
+        return [
+            ...element.querySelectorAll<FocusableElement>('a, button, input, textarea, [tabindex]:not([tabindex="-1"])')
+        ].filter((el) => !el.hasAttribute('disabled'))
+    }
+
+    const trapFocus = (e: KeyboardEvent, modal: HTMLDialogElement) => {
+        const focusables = getFocusableElements(modal)
+
+        const first = focusables[0]!
+        const last = focusables[focusables.length - 1]!
+
+        if (document.activeElement === last && e.key === 'Tab' && !e.shiftKey) {
+            e.preventDefault()
+            first.focus()
+        }
+
+        if (document.activeElement === first && e.key === 'Tab' && e.shiftKey) {
+            e.preventDefault()
+            last.focus()
+        }
+    }
+
+        const openModal = (modal: HTMLDialogElement) => {
+            const modalTitle = modal.querySelector('h3');
+            const modalInner = modal.querySelector<HTMLDivElement>('.modal__inner');
+
+            modal.showModal()
+            modalTitle!.focus()
+
+            trapFocusController = new AbortController()
+            keydownController = new AbortController()
+
+            document.addEventListener('keydown', (e) => trapFocus(e, modal), {signal: trapFocusController.signal})
+
+            modal.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closeModal()
+                }
+            })
+
+            modal.addEventListener('click', () => {
+                closeModal()
+            }, {signal: keydownController.signal})
+
+            modalInner!.addEventListener('click', (e) => {
+                e.stopPropagation()
+            }, {signal: keydownController.signal})
+        }
+
+        const closeModal = () => {
+            modals.forEach((modal) => {
+                const modalId = modal.getAttribute('aria-labelledby')
+                const modalTrigger = document.querySelector(`#${modalId}`) as HTMLButtonElement
+                modalTrigger.focus({preventScroll: true})
+                modal.close()
+
+                trapFocusController?.abort()
+                keydownController?.abort()
+            })
+        }
+
+        const initModal = () => {
+            modals.forEach((modal) => {
+                const modalId = modal.getAttribute('aria-labelledby')
+                const modalCloseBtn = modal.querySelector('.modal__close button')
+                const modalTrigger = document.querySelector(`#${modalId}`)
+
+                if (!modalTrigger) {
+                    throw new Error(`Trigger element not found`)
+                }
+
+                modalTrigger.addEventListener('click', () => openModal(modal))
+                modalCloseBtn!.addEventListener('click', closeModal)
+            })
+        }
+
+        initModal()
+
+        // Listen for view transitions
+        document.addEventListener('astro:after-swap', () => {
+            initModal()
+        })
+</script>
+
+<style is:global lang="scss">
+    @import "../styles/variables.scss";
+
+    dialog::backdrop {
+        background-color: rgba(0, 0, 0, 0.5);
+        filter: blur(6px);
+    }
+
+    :where(.modal) {
+        color: black;
+        background-color: $navy;
+        border-radius: 1rem;
+        padding: 20px;
+    }
+
+    .modal__inner {
+        width: clamp(30ch, 70%, 75ch);
+        border-radius: 0.5rem;
+        width: 100%;
+    }
+
+    .modal__close {
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .modal__close button {
+        border: none;
+        background-color: lightgrey;
+        border-radius: 0.4rem;
+        color: black;
+        text-align: right;
+        transition: background-color 0.15s ease-in-out;
+        margin: 0;
+        padding: 0.5rem;
+    }
+</style>

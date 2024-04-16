@@ -1,0 +1,12 @@
+---
+interface ModalTriggerProps {
+    id: string
+    text: string
+}
+
+const {id, text} = Astro.props
+---
+
+<button id={id}>{text}</button>
+
+<style is:inline></style>
